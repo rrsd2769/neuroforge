@@ -1,0 +1,26 @@
+[project]
+name = "neuroforge-ml-engine"
+version = "0.1.0"
+description = "NeuroForge core ML engine — architecture search, training, compression, and benchmarking. Zero web-framework dependencies by design."
+requires-python = ">=3.11"
+dependencies = [
+    "torch>=2.2",
+    "torchvision>=0.17",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "mypy>=1.9",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.mypy]
+strict = true
+exclude = ["tests"]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
