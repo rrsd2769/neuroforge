@@ -60,3 +60,14 @@ class Experiment:
             "completed_at": self.completed_at,
             "error_message": self.error_message,
         }
+    @classmethod
+    def from_dict(cls, data: dict) -> "Experiment":
+        """Reconstruct an Experiment from a to_dict() payload."""
+        obj = cls()  # triggers default_factory for experiment_id + created_at
+        obj.experiment_id = data["experiment_id"]
+        obj.status = ExperimentStatus(data["status"])
+        obj.architecture_id = data.get("architecture_id")
+        obj.created_at = data["created_at"]
+        obj.completed_at = data.get("completed_at")
+        obj.error_message = data.get("error_message")
+        return obj
