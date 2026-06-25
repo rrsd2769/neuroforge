@@ -24,3 +24,8 @@ exclude = ["tests"]
 [build-system]
 requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: marks tests that train real models (deselect with -m 'not slow')",
+]
