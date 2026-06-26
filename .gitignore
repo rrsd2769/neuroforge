@@ -1,2 +1,3 @@
 data/cifar10/
-*.tar.gzdata/cifar10/
+packages/ml-engine/data/
+*.tar.gz
