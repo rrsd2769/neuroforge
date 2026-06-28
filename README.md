@@ -8,10 +8,10 @@
 
 ## What Makes This Different
 
-Most ML projects are notebooks or scripts — untestable, tightly coupled to specific frameworks, impossible to extend cleanly. NeuroForge deliberately applies **hexagonal (ports and adapters) architecture** to an ML system:
+Most ML projects are notebooks or scripts : untestable, tightly coupled to specific frameworks, impossible to extend cleanly. NeuroForge deliberately applies **hexagonal (ports and adapters) architecture** to an ML system:
 
 - The domain layer has **zero knowledge of PyTorch, FastAPI, or Streamlit**
-- Every ML operation flows through a typed abstract port — swap PyTorch for JAX, flat files for PostgreSQL, or FastAPI for a CLI without touching domain logic
+- Every ML operation flows through a typed abstract port : swap PyTorch for JAX, flat files for PostgreSQL, or FastAPI for a CLI without touching domain logic
 - Every entity and use case is unit-testable with no I/O, no GPU, and no network
 
 ---
