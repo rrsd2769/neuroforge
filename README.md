@@ -271,6 +271,20 @@ Test coverage by layer:
 
 ---
 
+## Screenshots
+
+| Home | Experiments |
+|---|---|
+| ![Home](docs/screenshots/home.png) | ![Experiments](docs/screenshots/default_config.png) |
+
+| Compare Experiments | Results |
+|---|---|
+| ![Run](docs/screenshots/compare.png) | ![Results](docs/screenshots/default_result.png) |
+
+| ![Results](docs/screenshots/convo_results_1.png) | ![Results](docs/screenshots/convo_results_2.png) |
+
+
+
 ## Build Log
 
 | Day | Deliverable |
