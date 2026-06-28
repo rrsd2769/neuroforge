@@ -134,3 +134,79 @@ class TestLayerCompositionPie:
         label_value = dict(zip(pie.labels, pie.values))
         assert label_value["conv"] == 2
         assert label_value["dense"] == 1
+
+class TestAccuracyTrendChart:
+    def test_returns_figure(self):
+        from dashboard.components.charts import accuracy_trend_chart
+        exps = [
+            {
+                "experiment_id": "aaa",
+                "name": "Run1",
+                "created_at": "2026-01-01T00:00:00Z",
+                "results": {"top1_accuracy": 0.20, "top5_accuracy": 0.50},
+            },
+            {
+                "experiment_id": "bbb",
+                "name": "Run2",
+                "created_at": "2026-01-02T00:00:00Z",
+                "results": {"top1_accuracy": 0.40, "top5_accuracy": 0.70},
+            },
+        ]
+        fig = accuracy_trend_chart(exps)
+        assert isinstance(fig, go.Figure)
+
+    def test_empty_returns_figure(self):
+        from dashboard.components.charts import accuracy_trend_chart
+        fig = accuracy_trend_chart([])
+        assert isinstance(fig, go.Figure)
+
+    def test_has_two_traces(self):
+        from dashboard.components.charts import accuracy_trend_chart
+        exps = [
+            {
+                "experiment_id": "aaa",
+                "name": "Run1",
+                "created_at": "2026-01-01T00:00:00Z",
+                "results": {"top1_accuracy": 0.30, "top5_accuracy": 0.60},
+            }
+        ]
+        fig = accuracy_trend_chart(exps)
+        assert len(fig.data) == 2  # top-1 line + top-5 line
+
+    def test_skips_experiments_without_results(self):
+        from dashboard.components.charts import accuracy_trend_chart
+        exps = [
+            {
+                "experiment_id": "aaa",
+                "name": "Run1",
+                "created_at": "2026-01-01T00:00:00Z",
+                "results": None,
+            },
+            {
+                "experiment_id": "bbb",
+                "name": "Run2",
+                "created_at": "2026-01-02T00:00:00Z",
+                "results": {"top1_accuracy": 0.40, "top5_accuracy": 0.70},
+            },
+        ]
+        # Should not raise — None results should be filtered
+        fig = accuracy_trend_chart(exps)
+        assert isinstance(fig, go.Figure)
+
+
+class TestComparisonBarChart:
+    def test_returns_figure(self):
+        from dashboard.components.charts import comparison_bar_chart
+        exps = [EXPERIMENT_A, EXPERIMENT_B]
+        fig = comparison_bar_chart(exps)
+        assert isinstance(fig, go.Figure)
+
+    def test_has_two_bar_traces(self):
+        from dashboard.components.charts import comparison_bar_chart
+        fig = comparison_bar_chart([EXPERIMENT_A, EXPERIMENT_B])
+        assert len(fig.data) == 2  # top-1 bars + top-5 bars
+
+    def test_empty_returns_figure(self):
+        from dashboard.components.charts import comparison_bar_chart
+        fig = comparison_bar_chart([])
+        assert isinstance(fig, go.Figure)

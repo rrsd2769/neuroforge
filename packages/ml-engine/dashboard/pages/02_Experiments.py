@@ -11,7 +11,7 @@ import pandas as pd
 
 from dashboard.config import CONFIG
 from dashboard.components.api_client import NeuroForgeClient, NeuroForgeAPIError
-from dashboard.components.charts import accuracy_bar_chart, top1_vs_top5_chart, loss_scatter
+from dashboard.components.charts import accuracy_bar_chart, top1_vs_top5_chart, loss_scatter , comparison_bar_chart
 from dashboard.components.ui_helpers import (
     api_status_badge,
     format_accuracy,
@@ -113,6 +113,7 @@ def main() -> None:
     # ── Send to Results page ──────────────────────────────────────────────────
     st.divider()
     st.subheader("Inspect Experiment")
+
     full_ids = [get_exp_id(e) for e in experiments]
     names = [e.get("name", get_exp_id(e)[:8]) for e in experiments]
     selected = st.selectbox(
@@ -122,6 +123,56 @@ def main() -> None:
             (e.get("name", x[:8]) for e in experiments if get_exp_id(e) == x), x[:8]
         ),
     )
+
+    # ── Multi-experiment comparison ───────────────────────────────────────────────
+    st.divider()
+    st.subheader("Compare Experiments")
+    st.caption("Select 2 or more experiments to compare side-by-side.")
+
+    if "comparison_selection" not in st.session_state:
+        st.session_state["comparison_selection"] = []
+
+    exp_options = {
+        e.get("name", get_exp_id(e)[:8]): e
+        for e in with_results
+}
+
+    selected_names = st.multiselect(
+        "Select experiments",
+        options=list(exp_options.keys()),
+        default=st.session_state["comparison_selection"],
+        key="comparison_multiselect",
+    )
+    st.session_state["comparison_selection"] = selected_names
+
+    if len(selected_names) >= 2:
+        selected_exps = [exp_options[n] for n in selected_names]
+        st.plotly_chart(
+            comparison_bar_chart(selected_exps), use_container_width=True
+        )
+
+    # Side-by-side metric table
+        comp_rows = []
+        for exp in selected_exps:
+            tc = exp.get("training_config") or {}
+            arch = exp.get("architecture_summary") or {}
+            comp_rows.append({
+                "Name": exp.get("name", "—"),
+                "Top-1": format_accuracy(get_top1(exp)),
+                "Top-5": format_accuracy(get_top5(exp)),
+                "Train Loss": format_loss(get_train_loss(exp)),
+                "Eval Loss": format_loss(get_eval_loss(exp)),
+                "Epochs": tc.get("epochs", "—"),
+                "LR": tc.get("learning_rate", "—"),
+                "Optimizer": tc.get("optimizer", "—"),
+                "Layers": arch.get("num_layers", "—"),
+            })
+        import pandas as pd
+        st.dataframe(pd.DataFrame(comp_rows), use_container_width=True, hide_index=True)
+
+    elif len(selected_names) == 1:
+        st.info("Select at least one more experiment to compare.")
+
     if selected and st.button("📊 View Results"):
         st.session_state["results_experiment_id"] = selected
         st.success("Experiment selected. Open the **Results** page.")

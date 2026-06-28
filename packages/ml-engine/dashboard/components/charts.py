@@ -138,6 +138,88 @@ def layer_composition_pie(layers: list[dict]) -> go.Figure:
     )
     return fig
 
+def accuracy_trend_chart(experiments: list[dict[str, Any]]) -> go.Figure:
+    """
+    Line chart of top-1 accuracy ordered by creation time.
+    Shows whether accuracy is improving across successive experiments.
+    """
+    if not experiments:
+        return _empty_figure("No experiments yet")
+
+    # Sort by created_at ascending
+    sorted_exps = sorted(
+        [e for e in experiments if (e.get("results") or {}).get("top1_accuracy") is not None],
+        key=lambda e: e.get("created_at", ""),
+    )
+
+    if not sorted_exps:
+        return _empty_figure("No completed experiments")
+
+    names = [e.get("name", e.get("experiment_id", "")[:8]) for e in sorted_exps]
+    top1 = [(e.get("results") or {}).get("top1_accuracy", 0) * 100 for e in sorted_exps]
+    top5 = [(e.get("results") or {}).get("top5_accuracy", 0) * 100 for e in sorted_exps]
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=names, y=top1, mode="lines+markers+text",
+        name="Top-1", line=dict(color=BRAND_COLORS["primary"], width=2),
+        marker=dict(size=10),
+        text=[f"{v:.1f}%" for v in top1],
+        textposition="top center",
+    ))
+    fig.add_trace(go.Scatter(
+        x=names, y=top5, mode="lines+markers",
+        name="Top-5", line=dict(color=BRAND_COLORS["success"], width=2, dash="dot"),
+        marker=dict(size=8),
+    ))
+    # Random-chance baseline for CIFAR-10
+    fig.add_hline(
+        y=10, line_dash="dash", line_color=BRAND_COLORS["muted"],
+        annotation_text="Random chance (10%)", annotation_position="right",
+    )
+    fig.update_layout(
+        title="Accuracy Trend Across Experiments",
+        xaxis_title="Experiment (chronological)",
+        yaxis_title="Accuracy (%)",
+        yaxis_range=[0, 105],
+        height=380,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        **_LAYOUT,
+    )
+    return fig
+
+
+def comparison_bar_chart(experiments: list[dict[str, Any]]) -> go.Figure:
+    """
+    Grouped bar chart for a selected subset of experiments.
+    Shows top-1, top-5, and inverted-loss side by side for direct comparison.
+    """
+    if not experiments:
+        return _empty_figure("Select experiments to compare")
+
+    names = [e.get("name", e.get("experiment_id", "")[:8]) for e in experiments]
+    top1 = [(e.get("results") or {}).get("top1_accuracy", 0) * 100 for e in experiments]
+    top5 = [(e.get("results") or {}).get("top5_accuracy", 0) * 100 for e in experiments]
+
+    fig = go.Figure([
+        go.Bar(name="Top-1 Acc (%)", x=names, y=top1,
+               marker_color=BRAND_COLORS["primary"],
+               text=[f"{v:.1f}%" for v in top1], textposition="outside"),
+        go.Bar(name="Top-5 Acc (%)", x=names, y=top5,
+               marker_color=BRAND_COLORS["success"],
+               text=[f"{v:.1f}%" for v in top5], textposition="outside"),
+    ])
+    fig.update_layout(
+        barmode="group",
+        title="Head-to-Head Comparison",
+        yaxis_title="Accuracy (%)",
+        yaxis_range=[0, 115],
+        height=420,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        **_LAYOUT,
+    )
+    return fig
+
 
 def _empty_figure(message: str) -> go.Figure:
     fig = go.Figure()

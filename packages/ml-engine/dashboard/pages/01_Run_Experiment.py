@@ -192,6 +192,14 @@ def main() -> None:
         elif not last_is_dense:
             st.warning("Last layer should be Dense (output layer).")
         else:
+            # Estimated time warning
+            estimated_seconds = epochs * (train_samples / 100) * 1.5
+            estimated_min = max(1, round(estimated_seconds / 60))
+            st.caption(
+                f"⏱ Estimated training time: ~{estimated_min} min on CPU. "
+                "The page will be unresponsive until done."
+            )   
+
             if st.button("🚀 Run Experiment", type="primary", use_container_width=True):
                 architecture = {
                     "num_classes": num_classes,
@@ -221,20 +229,33 @@ def main() -> None:
                     except NeuroForgeAPIError as exc:
                         st.error(f"Run failed: {exc}")
                         return
-
                 exp_id = result.get("experiment_id", "")
                 results = result.get("results") or {}
                 top1 = results.get("top1_accuracy", 0)
                 top5 = results.get("top5_accuracy", 0)
                 train_loss = results.get("final_train_loss", 0)
+                eval_loss = results.get("mean_eval_loss", 0)
 
-                st.success(f"✅ Experiment complete! ID: `{exp_id[:16]}…`")
-                m1, m2, m3 = st.columns(3)
+                st.success("✅ Training complete!")
+
+                m1, m2, m3, m4 = st.columns(4)
                 m1.metric("Top-1 Accuracy", f"{top1 * 100:.2f}%")
                 m2.metric("Top-5 Accuracy", f"{top5 * 100:.2f}%")
                 m3.metric("Train Loss", f"{train_loss:.4f}")
+                m4.metric("Eval Loss", f"{eval_loss:.4f}")
 
-                st.info("See full results in the **Results** page.")
+                with st.expander("Full experiment details"):
+                    st.code(exp_id)
+                    st.json(result)
+
+                if top1 < 0.10:
+                    st.warning(
+        "Top-1 accuracy is below random chance (10% for CIFAR-10). "
+        "Try more epochs, a deeper network, or more training samples."
+                )
+
+                st.session_state["results_experiment_id"] = exp_id
+                st.info("Results saved. Open the **Results** page for full breakdown.")
 
 
 if __name__ == "__main__":
