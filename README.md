@@ -217,13 +217,15 @@ Six training runs across different architectures, depths, and optimizers:
 
 | Experiment | Architecture | Optimizer | Epochs | Samples | Top-1 | Top-5 |
 |---|---|---|---|---|---|---|
+| **ConvDropout-Full-CIFAR10** | **2 conv + dropout + dense** | **Adam** | **40** | **50,000 (full)** | **74.0%** | **97.8%** |
 | Baseline-Tiny | 1 conv + dense | Adam | 3 | 1,000 | 39.0% | 74.5% |
 | Conv-Medium | 2 conv + 2 dense | Adam | 5 | 2,000 | 47.5% | 81.2% |
-| **Conv-Dropout** | **2 conv + dropout + dense** | **Adam** | **8** | **2,000** | **51.2%** | **84.1%** |
+| Conv-Dropout | 2 conv + dropout + dense | Adam | 8 | 2,000 | 51.2% | 84.1% |
 | SGD-Momentum | 2 conv + 2 dense | SGD | 5 | 2,000 | 38.2% | 72.8% |
 | Wide-Best | 2 wide conv + dropout + dense | Adam | 10 | 3,000 | 49.4% | 82.6% |
 | MyExperiment | 1 conv + dense | Adam | 1 | 500 | 39.5% | 74.0% |
 
+| Experiment | Architecture | Optimizer | 
 Key findings from the comparison:
 - **Dropout regularization** was the single largest accuracy lever — outperforming both added width and added depth
 - **Adam consistently outperformed SGD** at equivalent epoch counts on this dataset and learning rate
@@ -283,21 +285,6 @@ Test coverage by layer:
 
 | ![Results](docs/screenshots/convo_results_1.png) | ![Results](docs/screenshots/convo_results_2.png) |
 
-
-
-## Build Log
-
-| Day | Deliverable |
-|---|---|
-| 1–3 | Domain entities, value objects, 9 typed ports |
-| 4–8 | CIFAR-10 data pipeline, preprocessing, DatasetManager |
-| 9-13 | Architecture search, RandomArchitectureGenerator, SearchSpace |
-| 14-16 | PyTorchModelCompiler, PyTorchTrainer, PyTorchEvaluator |
-| 17-19 | ExperimentTrackingUseCase, FileExperimentTracker |
-| 20-26 | FastAPI REST layer — 4 endpoints, Pydantic v2 schemas |
-| 27-34 | Streamlit dashboard — 4 pages, API client, Plotly charts |
-| 35-40 | 5 real training runs seeded, comparison charts, Home polish |
-| 41-45 | README, architecture docs, demo script |
 
 ---
 
