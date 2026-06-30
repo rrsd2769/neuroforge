@@ -1,3 +1,18 @@
 data/cifar10/
 packages/ml-engine/data/
 *.tar.gz
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Experiments data (don't commit training runs)
+packages/ml-engine/experiments/
+
+# Virtual env
+venv/
+.venv/
