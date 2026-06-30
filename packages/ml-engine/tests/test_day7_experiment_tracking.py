@@ -16,7 +16,6 @@ from pathlib import Path
 
 import pytest
 
-from neuroforge_core.domain.entities.experiment import Experiment, ExperimentStatus
 from neuroforge_core.domain.entities.experiment_snapshot import ExperimentSnapshot
 from neuroforge_core.infrastructure.adapters.file_experiment_tracker import (
     FileExperimentTracker,
@@ -125,38 +124,6 @@ class TestExperimentSnapshot:
         restored = ExperimentSnapshot.from_dict(d)
         assert restored.tags == {}
 
-
-# ------------------------------------------------------------------ #
-# Experiment.from_dict (added in Day 7)
-# ------------------------------------------------------------------ #
-
-class TestExperimentFromDict:
-
-    def test_roundtrip_pending(self):
-        exp = Experiment()
-        restored = Experiment.from_dict(exp.to_dict())
-        assert restored.experiment_id == exp.experiment_id
-        assert restored.status == ExperimentStatus.PENDING
-        assert restored.created_at == exp.created_at
-
-    def test_roundtrip_completed(self):
-        exp = Experiment()
-        exp.mark_completed()
-        restored = Experiment.from_dict(exp.to_dict())
-        assert restored.status == ExperimentStatus.COMPLETED
-        assert restored.completed_at == exp.completed_at
-
-    def test_roundtrip_failed(self):
-        exp = Experiment()
-        exp.mark_failed("Gradient exploded")
-        restored = Experiment.from_dict(exp.to_dict())
-        assert restored.status == ExperimentStatus.FAILED
-        assert restored.error_message == "Gradient exploded"
-
-    def test_roundtrip_with_architecture_id(self):
-        exp = Experiment(architecture_id="arch-xyz")
-        restored = Experiment.from_dict(exp.to_dict())
-        assert restored.architecture_id == "arch-xyz"
 
 
 # ------------------------------------------------------------------ #

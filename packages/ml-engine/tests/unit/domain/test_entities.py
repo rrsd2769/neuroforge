@@ -15,17 +15,15 @@ from neuroforge_core.domain.entities.dataset import Dataset, DatasetMetadata
 from neuroforge_core.domain.entities.evaluation_result import (
     EvaluationResult, TrainingMetrics,
 )
-from neuroforge_core.domain.entities.experiment import Experiment, ExperimentStatus
 from neuroforge_core.domain.entities.model_artifact import ModelArtifact
 from neuroforge_core.domain.interfaces.architecture_generator_port import ArchitectureGeneratorPort
 from neuroforge_core.domain.interfaces.dataset_port import DatasetSourcePort
 from neuroforge_core.domain.interfaces.evaluator_port import EvaluatorPort
-from neuroforge_core.domain.interfaces.experiment_tracker_port import ExperimentTrackerPort
 from neuroforge_core.domain.interfaces.model_trainer import IModelTrainer
+from neuroforge_core.domain.interfaces.i_experiment_repository import IExperimentRepository
 from neuroforge_core.domain.value_objects.preprocessing_config import PreprocessingConfig
 from neuroforge_core.domain.value_objects.search_space import SearchSpace
 from neuroforge_core.domain.value_objects.training_config import TrainingConfig
-
 
 # ── Dataset ───────────────────────────────────────────────────────────────────
 
@@ -75,28 +73,6 @@ def test_architecture_is_valid_for_input():
 def test_architecture_unique_ids():
     assert _sample_architecture().id != _sample_architecture().id
 
-
-# ── Experiment ────────────────────────────────────────────────────────────────
-
-def test_experiment_lifecycle():
-    exp = Experiment()
-    assert exp.status == ExperimentStatus.PENDING
-    exp.mark_running()
-    assert exp.status == ExperimentStatus.RUNNING
-    exp.mark_completed()
-    assert exp.status == ExperimentStatus.COMPLETED
-    assert exp.completed_at is not None
-
-
-def test_experiment_failure_records_error():
-    exp = Experiment()
-    exp.mark_failed("OOM during training")
-    assert exp.status == ExperimentStatus.FAILED
-    assert exp.error_message == "OOM during training"
-
-
-def test_experiment_id_is_unique_per_instance():
-    assert Experiment().experiment_id != Experiment().experiment_id
 
 
 # ── ModelArtifact / EvaluationResult / TrainingMetrics ───────────────────────
@@ -155,7 +131,7 @@ def test_preprocessing_config_default_splits_valid():
 
 @pytest.mark.parametrize("port_cls", [
     DatasetSourcePort, ArchitectureGeneratorPort,
-    IModelTrainer, EvaluatorPort, ExperimentTrackerPort,
+    IModelTrainer, EvaluatorPort, IExperimentRepository,
 ])
 def test_ports_cannot_be_instantiated_directly(port_cls):
     with pytest.raises(TypeError):
