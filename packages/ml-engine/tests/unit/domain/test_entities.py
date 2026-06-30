@@ -21,7 +21,7 @@ from neuroforge_core.domain.interfaces.architecture_generator_port import Archit
 from neuroforge_core.domain.interfaces.dataset_port import DatasetSourcePort
 from neuroforge_core.domain.interfaces.evaluator_port import EvaluatorPort
 from neuroforge_core.domain.interfaces.experiment_tracker_port import ExperimentTrackerPort
-from neuroforge_core.domain.interfaces.trainer_port import TrainerPort
+from neuroforge_core.domain.interfaces.model_trainer import IModelTrainer
 from neuroforge_core.domain.value_objects.preprocessing_config import PreprocessingConfig
 from neuroforge_core.domain.value_objects.search_space import SearchSpace
 from neuroforge_core.domain.value_objects.training_config import TrainingConfig
@@ -155,7 +155,7 @@ def test_preprocessing_config_default_splits_valid():
 
 @pytest.mark.parametrize("port_cls", [
     DatasetSourcePort, ArchitectureGeneratorPort,
-    TrainerPort, EvaluatorPort, ExperimentTrackerPort,
+    IModelTrainer, EvaluatorPort, ExperimentTrackerPort,
 ])
 def test_ports_cannot_be_instantiated_directly(port_cls):
     with pytest.raises(TypeError):

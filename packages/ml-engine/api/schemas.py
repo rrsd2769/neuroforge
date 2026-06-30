@@ -112,6 +112,7 @@ class SnapshotResponse(BaseModel):
     experiment_id: str
     name: str
     created_at: str
+    status: str
     architecture_summary: dict[str, Any]
     training_config: dict[str, Any]
     results: dict[str, Any]

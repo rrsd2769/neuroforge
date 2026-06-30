@@ -43,6 +43,7 @@ def _build_dataframe(experiments: list[dict]) -> pd.DataFrame:
         arch = exp.get("architecture_summary") or {}
         rows.append({
             "Name": exp.get("name", "—"),
+            "Status": exp.get("status", "completed"),
             "ID": get_exp_id(exp)[:12] + "…",
             "Top-1 Acc": format_accuracy(get_top1(exp)),
             "Top-5 Acc": format_accuracy(get_top5(exp)),

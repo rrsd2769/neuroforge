@@ -1,7 +1,7 @@
-from abc import ABC, abstractmethod
-from typing import Optional
+from __future__ import annotations
 
-from torch.utils.data import DataLoader
+from abc import ABC, abstractmethod
+from typing import Any, Optional
 
 from neuroforge_core.domain.entities.training_run import TrainingRun
 
@@ -9,6 +9,10 @@ from neuroforge_core.domain.entities.training_run import TrainingRun
 class IModelTrainer(ABC):
     """
     Port: contract for executing a training loop.
+
+    train_loader / val_loader are typed Any deliberately — torch has
+    no place being referenced inside the domain layer. The concrete
+    PyTorchTrainer adapter narrows these to DataLoader internally.
 
     Implementors must:
     - Call run.start() before touching the model.
@@ -21,8 +25,8 @@ class IModelTrainer(ABC):
     def train(
         self,
         run: TrainingRun,
-        train_loader: DataLoader,
-        val_loader: Optional[DataLoader] = None,
+        train_loader: Any,
+        val_loader: Optional[Any] = None,
     ) -> TrainingRun:
         """Execute the training loop; return the mutated run."""
         ...

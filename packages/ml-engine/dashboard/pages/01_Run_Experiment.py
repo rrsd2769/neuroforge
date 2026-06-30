@@ -1,6 +1,7 @@
 """Run Experiment page — build architecture + submit training run."""
 from __future__ import annotations
 
+import time
 import sys
 import os
 
@@ -118,7 +119,6 @@ def _add_layer_form() -> None:
         st.session_state["layers"].append(new_layer)
         st.rerun()
 
-
 def main() -> None:
     client = get_client()
     _init_state()
@@ -129,6 +129,75 @@ def main() -> None:
     if not client.health_check():
         api_status_badge(False)
         st.stop()
+
+    # ── Active training poll ──────────────────────────────────────────────────
+    # Check at the TOP before rendering anything else
+    polling_id = st.session_state.get("polling_experiment_id")
+    if polling_id:
+        try:
+            exp = client.get_experiment(polling_id)
+            status = exp.get("status", "unknown")
+
+            if status == "pending":
+                st.info("⏳ Experiment queued — training will start shortly…")
+                st.caption(f"Experiment ID: `{polling_id}`")
+                time.sleep(5)
+                st.rerun()
+
+            elif status == "running":
+                st.info("🔄 Training in progress…")
+                st.caption(f"Experiment ID: `{polling_id}`")
+                tc = exp.get("training_config", {})
+                st.caption(
+                    f"Epochs: {tc.get('epochs', '?')} | "
+                    f"LR: {tc.get('learning_rate', '?')} | "
+                    f"Optimizer: {tc.get('optimizer', '?')}"
+                )
+                time.sleep(8)
+                st.rerun()
+
+            elif status == "completed":
+                results = exp.get("results") or {}
+                top1 = results.get("top1_accuracy", 0)
+                top5 = results.get("top5_accuracy", 0)
+                train_loss = results.get("final_train_loss", 0)
+                eval_loss = results.get("mean_eval_loss", 0)
+
+                st.success("✅ Training complete!")
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Top-1 Accuracy", f"{top1 * 100:.2f}%")
+                m2.metric("Top-5 Accuracy", f"{top5 * 100:.2f}%")
+                m3.metric("Train Loss", f"{train_loss:.4f}")
+                m4.metric("Eval Loss", f"{eval_loss:.4f}")
+
+                if top1 < 0.10:
+                    st.warning(
+                        "Top-1 below random chance (10%). "
+                        "Try more epochs, deeper network, or more training samples."
+                    )
+
+                st.session_state["results_experiment_id"] = polling_id
+                st.info("Open the **Results** page for full breakdown.")
+
+                if st.button("🔁 Run Another Experiment"):
+                    del st.session_state["polling_experiment_id"]
+                    st.rerun()
+                return  # Don't show the form while results are displayed
+
+            elif status == "failed":
+                error = exp.get("tags", {}).get("error", "Unknown error")
+                st.error(f"❌ Training failed: {error}")
+                if st.button("🔁 Try Again"):
+                    del st.session_state["polling_experiment_id"]
+                    st.rerun()
+                return
+
+        except Exception as exc:
+            st.error(f"Could not check training status: {exc}")
+            if st.button("Clear"):
+                del st.session_state["polling_experiment_id"]
+                st.rerun()
+            return
 
     st.divider()
 
@@ -151,7 +220,6 @@ def main() -> None:
         st.markdown("---")
         _add_layer_form()
 
-        # Architecture preview chart
         if st.session_state["layers"]:
             st.plotly_chart(
                 layer_composition_pie(st.session_state["layers"]),
@@ -180,7 +248,6 @@ def main() -> None:
 
         st.markdown("---")
 
-        # Validation
         layers = st.session_state["layers"]
         has_flatten = any(l.get("type") == "flatten" for l in layers)
         last_is_dense = layers and layers[-1].get("type") == "dense"
@@ -192,19 +259,15 @@ def main() -> None:
         elif not last_is_dense:
             st.warning("Last layer should be Dense (output layer).")
         else:
-            # Estimated time warning
             estimated_seconds = epochs * (train_samples / 100) * 1.5
             estimated_min = max(1, round(estimated_seconds / 60))
             st.caption(
-                f"⏱ Estimated training time: ~{estimated_min} min on CPU. "
-                "The page will be unresponsive until done."
-            )   
+                f"⏱ Estimated time: ~{estimated_min} min. "
+                "Page stays responsive — training runs in background."
+            )
 
             if st.button("🚀 Run Experiment", type="primary", use_container_width=True):
-                architecture = {
-                    "num_classes": num_classes,
-                    "layers": layers,
-                }
+                architecture = {"num_classes": num_classes, "layers": layers}
                 training_config = {
                     "epochs": epochs,
                     "learning_rate": float(learning_rate),
@@ -217,46 +280,20 @@ def main() -> None:
                     "test_samples": test_samples,
                 }
 
-                with st.spinner(f"Training for {epochs} epoch(s)… this may take a while."):
-                    try:
-                        result = client.run_experiment(
-                            name=exp_name,
-                            architecture=architecture,
-                            training_config=training_config,
-                            dataset_config=dataset_config,
-                        )
-                        st.session_state["last_result"] = result
-                    except NeuroForgeAPIError as exc:
-                        st.error(f"Run failed: {exc}")
-                        return
-                exp_id = result.get("experiment_id", "")
-                results = result.get("results") or {}
-                top1 = results.get("top1_accuracy", 0)
-                top5 = results.get("top5_accuracy", 0)
-                train_loss = results.get("final_train_loss", 0)
-                eval_loss = results.get("mean_eval_loss", 0)
-
-                st.success("✅ Training complete!")
-
-                m1, m2, m3, m4 = st.columns(4)
-                m1.metric("Top-1 Accuracy", f"{top1 * 100:.2f}%")
-                m2.metric("Top-5 Accuracy", f"{top5 * 100:.2f}%")
-                m3.metric("Train Loss", f"{train_loss:.4f}")
-                m4.metric("Eval Loss", f"{eval_loss:.4f}")
-
-                with st.expander("Full experiment details"):
-                    st.code(exp_id)
-                    st.json(result)
-
-                if top1 < 0.10:
-                    st.warning(
-        "Top-1 accuracy is below random chance (10% for CIFAR-10). "
-        "Try more epochs, a deeper network, or more training samples."
-                )
-
-                st.session_state["results_experiment_id"] = exp_id
-                st.info("Results saved. Open the **Results** page for full breakdown.")
+                try:
+                    result = client.run_experiment(
+                        name=exp_name,
+                        architecture=architecture,
+                        training_config=training_config,
+                        dataset_config=dataset_config,
+                    )
+                    exp_id = result.get("experiment_id", "")
+                    st.session_state["polling_experiment_id"] = exp_id
+                    st.rerun()  # immediately enter the polling loop above
+                except Exception as exc:
+                    st.error(f"Failed to submit experiment: {exc}")
 
 
 if __name__ == "__main__":
     main()
+

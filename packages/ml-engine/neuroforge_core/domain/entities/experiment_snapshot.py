@@ -1,10 +1,5 @@
 """
 ExperimentSnapshot — a flat, JSON-serializable record of one full training run.
-
-Companion to the Experiment lifecycle entity. While Experiment tracks status
-transitions, ExperimentSnapshot captures the *results* — architecture shape,
-training config, and evaluation metrics — in a form that's easy to persist,
-load, and compare.
 """
 from __future__ import annotations
 
@@ -26,49 +21,31 @@ class ExperimentSnapshot:
     """
     Flat, serializable snapshot of one architecture + training + evaluation run.
 
-    All fields are stdlib types — no enums, no nested dataclasses — so
-    json.dumps works with no custom encoder.
-
-    Fields
-    ------
-    name : str
-        Human-readable label for the run (e.g. "SmallCNN_v1").
-    architecture_summary : dict
-        Serialized layer list + metadata.
-        Keys: num_layers, num_classes, architecture_id, layers (list of dicts).
-    training_config : dict
-        Serialized TrainingConfig.
-        Keys: epochs, learning_rate, optimizer, batch_size, ... (whatever the
-        domain VO carries — captured dynamically by experiment_utils).
-    results : dict
-        Evaluation outputs.
-        Keys: final_train_loss, top1_accuracy, top5_accuracy, mean_eval_loss.
-        Any key may be None if evaluation was skipped.
-    experiment_id : str
-        Unique id — matches the Experiment entity id if both are used together.
-    created_at : str
-        ISO-8601 UTC timestamp.
-    tags : dict
-        Arbitrary string metadata for filtering/grouping.
+    status values:
+        "pending"   — submitted, training not yet started
+        "running"   — training in progress
+        "completed" — training and evaluation finished successfully
+        "failed"    — training raised an exception
     """
 
     name: str
     architecture_summary: dict
     training_config: dict
     results: dict
+
+    # New field — default "completed" so existing snapshots load correctly
+    status: str = field(default="completed")
+
     experiment_id: str = field(default_factory=_new_id)
     created_at: str = field(default_factory=_now_iso)
     tags: dict = field(default_factory=dict)
-
-    # ------------------------------------------------------------------ #
-    # Serialization
-    # ------------------------------------------------------------------ #
 
     def to_dict(self) -> dict:
         return {
             "experiment_id": self.experiment_id,
             "name": self.name,
             "created_at": self.created_at,
+            "status": self.status,
             "architecture_summary": self.architecture_summary,
             "training_config": self.training_config,
             "results": self.results,
@@ -81,6 +58,8 @@ class ExperimentSnapshot:
             experiment_id=data["experiment_id"],
             name=data["name"],
             created_at=data["created_at"],
+            # Use .get() with "completed" default for backward compat
+            status=data.get("status", "completed"),
             architecture_summary=data["architecture_summary"],
             training_config=data["training_config"],
             results=data["results"],

@@ -88,7 +88,7 @@ class TestExperimentSnapshot:
     def test_to_dict_contains_all_keys(self, sample_snapshot):
         d = sample_snapshot.to_dict()
         assert set(d.keys()) == {
-            "experiment_id", "name", "created_at",
+            "experiment_id", "name", "created_at", "status",
             "architecture_summary", "training_config", "results", "tags",
         }
 

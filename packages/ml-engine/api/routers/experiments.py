@@ -1,36 +1,40 @@
 """
 Experiment routes.
 
-POST  /experiments/run        → compile + train + evaluate + save → snapshot
+POST  /experiments/run        → validate → save pending → background train → 201
 GET   /experiments            → list all saved snapshots
-GET   /experiments/{id}       → single snapshot
+GET   /experiments/{id}       → single snapshot (poll this for status)
 DELETE /experiments/{id}      → remove snapshot (204)
 POST  /experiments/compare    → side-by-side comparison rows
 """
 from __future__ import annotations
 
+import logging
+
 import torch
 import torchvision
 import torchvision.transforms as transforms
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from torch.utils.data import DataLoader, Subset
 
-from neuroforge_core.application.experiment_utils import build_snapshot
+from neuroforge_core.application.experiment_utils import (
+    build_snapshot,
+    serialize_architecture,
+    serialize_training_config,
+)
 from neuroforge_core.application.train_model import TrainModelRequest, TrainModelUseCase
 from neuroforge_core.application.use_cases.experiment_tracking_use_case import (
     ExperimentTrackingUseCase,
 )
+from neuroforge_core.domain.entities.experiment_snapshot import ExperimentSnapshot
 from neuroforge_core.domain.value_objects.evaluation_config import EvaluationConfig
-from neuroforge_core.infrastructure.adapters.file_experiment_tracker import (
-    FileExperimentTracker,
-)
 from neuroforge_core.infrastructure.adapters.pytorch_evaluator import PyTorchEvaluator
 from neuroforge_core.infrastructure.adapters.pytorch_model_compiler import (
     PyTorchModelCompiler,
 )
 from neuroforge_core.infrastructure.training.pytorch_trainer import PyTorchTrainer
 
-from api.dependencies import get_tracking_use_case
+from api.dependencies import get_tracking_use_case, _get_tracker
 from api.layer_parser import parse_architecture, parse_training_config
 from api.schemas import (
     CompareRequest,
@@ -39,6 +43,7 @@ from api.schemas import (
     SnapshotResponse,
 )
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/experiments", tags=["experiments"])
 
 _DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -74,71 +79,163 @@ def _get_cifar10_loaders(
 
 
 # ------------------------------------------------------------------ #
+# Background training task
+# ------------------------------------------------------------------ #
+
+def _train_and_update(
+    experiment_id: str,
+    created_at: str,
+    body: RunExperimentRequest,
+    arch,
+    config,
+) -> None:
+    """
+    Runs in a background thread after the 201 response is already sent.
+
+    Uses _get_tracker() directly to get the singleton FileExperimentTracker —
+    do not pass the request-scoped ExperimentTrackingUseCase into this
+    function, FastAPI may tear it down once the response is sent.
+    """
+    tracker = _get_tracker()
+    tracking = ExperimentTrackingUseCase(repository=tracker)
+
+    # Mark as running
+    try:
+        snapshot = tracking.load(experiment_id)
+        snapshot.status = "running"
+        tracking.save(snapshot)
+    except Exception as exc:
+        logger.error("Failed to mark experiment %s as running: %s", experiment_id, exc)
+        return
+
+    try:
+        logger.info("Starting training for experiment %s", experiment_id)
+
+        train_loader, test_loader = _get_cifar10_loaders(
+            train_samples=body.dataset_config.train_samples,
+            test_samples=body.dataset_config.test_samples,
+        )
+
+        compiler = PyTorchModelCompiler()
+        model = compiler.compile(arch)
+
+        trainer = PyTorchTrainer(model=model, device=_DEVICE)
+        train_use_case = TrainModelUseCase(trainer=trainer)
+        request = TrainModelRequest(
+            architecture=arch,
+            config=config,
+            train_loader=train_loader,
+        )
+        response = train_use_case.execute(request)
+
+        if not response.succeeded:
+            raise RuntimeError("Training failed: use case returned succeeded=False")
+
+        evaluator = PyTorchEvaluator()
+        eval_metrics = evaluator.evaluate(
+            model=model,
+            data_loader=test_loader,
+            config=EvaluationConfig(top_k=5),
+        )
+
+        # build_snapshot accepts experiment_id directly — reuse the same id
+        # so this becomes an update, not a new record.
+        completed = build_snapshot(
+            name=body.name,
+            architecture=arch,
+            training_config=config,
+            final_train_loss=response.final_train_loss,
+            eval_metrics=eval_metrics,
+            tags=body.tags,
+            experiment_id=experiment_id,
+        )
+        # created_at isn't a build_snapshot param — preserve the original
+        # submission time rather than the completion time.
+        completed.created_at = created_at
+        completed.status = "completed"
+        tracking.save(completed)
+
+        logger.info(
+            "Experiment %s completed. Top-1: %.3f",
+            experiment_id,
+            eval_metrics.accuracy,
+        )
+
+    except Exception as exc:
+        logger.exception("Training failed for experiment %s: %s", experiment_id, exc)
+        try:
+            snapshot = tracking.load(experiment_id)
+            snapshot.status = "failed"
+            snapshot.tags["error"] = str(exc)
+            tracking.save(snapshot)
+        except Exception as save_exc:
+            logger.error("Could not save failed status: %s", save_exc)
+
+
+# ------------------------------------------------------------------ #
 # POST /experiments/run
 # ------------------------------------------------------------------ #
 
 @router.post("/run", response_model=SnapshotResponse, status_code=201)
 def run_experiment(
     body: RunExperimentRequest,
+    background_tasks: BackgroundTasks,
     tracking: ExperimentTrackingUseCase = Depends(get_tracking_use_case),
 ) -> SnapshotResponse:
     """
-    Compile, train, and evaluate an architecture on CIFAR-10.
-    Saves the result as an ExperimentSnapshot and returns it.
+    Validate architecture and config, save a pending snapshot, then
+    kick off training in a background thread. Returns 201 immediately.
+
+    Poll GET /experiments/{experiment_id} for status updates:
+        "pending"   → queued, not yet started
+        "running"   → training in progress
+        "completed" → results available
+        "failed"    → see tags["error"] for reason
     """
-    # Parse domain objects
     try:
         arch = parse_architecture(body.architecture)
         config = parse_training_config(body.training_config)
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
-    # Load data
-    train_loader, test_loader = _get_cifar10_loaders(
-        train_samples=body.dataset_config.train_samples,
-        test_samples=body.dataset_config.test_samples,
-    )
-
-    # Compile
+    # Fail fast on structurally invalid architectures before queuing
     compiler = PyTorchModelCompiler()
     try:
-        model = compiler.compile(arch)
-    except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Architecture compile error: {e}")
+        compiler.compile(arch)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=422, detail=f"Architecture compile error: {exc}"
+        )
 
-    # Train
-    trainer = PyTorchTrainer(model=model, device=_DEVICE)
-    train_use_case = TrainModelUseCase(trainer=trainer)
-    request = TrainModelRequest(
-        architecture=arch,
-        config=config,
-        train_loader=train_loader,
-    )
-    response = train_use_case.execute(request)
+    # Use the same serializers build_snapshot uses, so the pending
+    # snapshot has the identical shape to the eventual completed one.
+    arch_summary = serialize_architecture(arch)
+    config_dict = serialize_training_config(config)
 
-    if not response.succeeded:
-        raise HTTPException(status_code=500, detail="Training failed")
-
-    # Evaluate
-    evaluator = PyTorchEvaluator()
-    eval_metrics = evaluator.evaluate(
-        model=model,
-        data_loader=test_loader,
-        config=EvaluationConfig(top_k=5),
-    )
-
-    # Build + save snapshot
-    snapshot = build_snapshot(
+    pending = ExperimentSnapshot(
         name=body.name,
-        architecture=arch,
-        training_config=config,
-        final_train_loss=response.final_train_loss,
-        eval_metrics=eval_metrics,
-        tags=body.tags,
+        architecture_summary=arch_summary,
+        training_config=config_dict,
+        results={},
+        status="pending",
+        tags=body.tags or {},
     )
-    tracking.save(snapshot)
+    tracking.save(pending)
 
-    return SnapshotResponse.from_snapshot(snapshot)
+    background_tasks.add_task(
+        _train_and_update,
+        experiment_id=pending.experiment_id,
+        created_at=pending.created_at,
+        body=body,
+        arch=arch,
+        config=config,
+    )
+
+    logger.info(
+        "Experiment %s queued. Training will run in background.",
+        pending.experiment_id,
+    )
+    return SnapshotResponse.from_snapshot(pending)
 
 
 # ------------------------------------------------------------------ #
@@ -149,7 +246,6 @@ def run_experiment(
 def list_experiments(
     tracking: ExperimentTrackingUseCase = Depends(get_tracking_use_case),
 ) -> list[SnapshotResponse]:
-    """List all saved experiments, sorted by creation time ascending."""
     snapshots = tracking.list_all()
     return [SnapshotResponse.from_snapshot(s) for s in snapshots]
 
@@ -163,7 +259,6 @@ def get_experiment(
     experiment_id: str,
     tracking: ExperimentTrackingUseCase = Depends(get_tracking_use_case),
 ) -> SnapshotResponse:
-    """Load a single experiment by ID."""
     try:
         snapshot = tracking.load(experiment_id)
     except KeyError:
@@ -183,7 +278,6 @@ def delete_experiment(
     experiment_id: str,
     tracking: ExperimentTrackingUseCase = Depends(get_tracking_use_case),
 ) -> None:
-    """Delete a saved experiment. Returns 204 whether or not it existed."""
     tracking.delete(experiment_id)
 
 
@@ -196,10 +290,6 @@ def compare_experiments(
     body: CompareRequest,
     tracking: ExperimentTrackingUseCase = Depends(get_tracking_use_case),
 ) -> CompareResponse:
-    """
-    Return a side-by-side comparison table for a list of experiment IDs.
-    Missing IDs return a 404.
-    """
     missing = []
     for eid in body.ids:
         try:

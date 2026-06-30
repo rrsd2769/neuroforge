@@ -89,7 +89,7 @@ class NeuroForgeClient:
     def get_experiment(self, experiment_id: str) -> dict[str, Any]:
         resp = self._session.get(
             f"{self.base_url}/experiments/{experiment_id}",
-            timeout=self.timeout,
+            timeout=10,
         )
         self._raise_for_status(resp)
         return resp.json()
