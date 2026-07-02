@@ -230,3 +230,44 @@ def _empty_figure(message: str) -> go.Figure:
     )
     fig.update_layout(height=300, **_LAYOUT)
     return fig
+
+def pareto_front_chart(trials: list[dict]) -> go.Figure:
+    """
+    Scatter: parameter count vs top-1 accuracy across all trials.
+    Pareto-optimal points (best accuracy for their param budget,
+    or fewer params for equal/better accuracy) are highlighted.
+    """
+    if not trials:
+        return _empty_figure("No trials yet")
+
+    sorted_trials = sorted(trials, key=lambda t: t["parameter_count"])
+    pareto_ids = set()
+    best_acc_so_far = -1.0
+    for t in sorted_trials:
+        if t["top1_accuracy"] > best_acc_so_far:
+            pareto_ids.add(t["trial_number"])
+            best_acc_so_far = t["top1_accuracy"]
+
+    params = [t["parameter_count"] / 1000 for t in trials]  # in K
+    accs = [t["top1_accuracy"] * 100 for t in trials]
+    colors = [
+        BRAND_COLORS["success"] if t["trial_number"] in pareto_ids
+        else BRAND_COLORS["muted"]
+        for t in trials
+    ]
+    sizes = [14 if t["trial_number"] in pareto_ids else 9 for t in trials]
+    texts = [f"#{t['trial_number']}" for t in trials]
+
+    fig = go.Figure(go.Scatter(
+        x=params, y=accs, mode="markers+text",
+        text=texts, textposition="top center",
+        marker=dict(color=colors, size=sizes),
+    ))
+    fig.update_layout(
+        title="Architecture Search — Pareto Front",
+        xaxis_title="Parameters (K)",
+        yaxis_title="Top-1 Accuracy (%)",
+        height=420,
+        **_LAYOUT,
+    )
+    return fig

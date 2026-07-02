@@ -6,6 +6,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routers import health, experiments
+from api.routers import architecture_search
+
 
 
 @asynccontextmanager
@@ -33,6 +35,7 @@ def create_app() -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(experiments.router)
+    app.include_router(architecture_search.router)
 
     return app
 

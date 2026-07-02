@@ -113,3 +113,33 @@ class NeuroForgeClient:
             except Exception:
                 detail = resp.text
             raise NeuroForgeAPIError(resp.status_code, detail)
+        
+
+    def run_architecture_search(
+        self,
+        n_trials: int = 15,
+        epochs_per_trial: int = 2,
+        train_samples_per_trial: int = 1000,
+        test_samples_per_trial: int = 300,
+        min_depth: int = 2,
+        max_depth: int = 6,
+        channel_choices: list[int] | None = None,
+    ) -> dict:
+        payload = {
+            "n_trials": n_trials,
+            "epochs_per_trial": epochs_per_trial,
+            "train_samples_per_trial": train_samples_per_trial,
+            "test_samples_per_trial": test_samples_per_trial,
+            "min_depth": min_depth,
+            "max_depth": max_depth,
+            "channel_choices": channel_choices or [16, 32, 64, 128],
+        }
+        return self._post("/architecture-search/run", payload)
+
+
+    def get_architecture_search(self, search_id: str) -> dict:  
+        resp = self._session.get(
+            f"{self.base_url}/architecture-search/{search_id}", timeout=10,
+        )
+        self._raise_for_status(resp)
+        return resp.json()

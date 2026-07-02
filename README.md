@@ -225,13 +225,71 @@ Six training runs across different architectures, depths, and optimizers:
 | Wide-Best | 2 wide conv + dropout + dense | Adam | 10 | 3,000 | 49.4% | 82.6% |
 | MyExperiment | 1 conv + dense | Adam | 1 | 500 | 39.5% | 74.0% |
 
+
+
 | Experiment | Architecture | Optimizer | 
 Key findings from the comparison:
 - **Dropout regularization** was the single largest accuracy lever — outperforming both added width and added depth
 - **Adam consistently outperformed SGD** at equivalent epoch counts on this dataset and learning rate
 - **ConvDropout-Full-CIFAR10** validates the architecture at scale — 74% top-1 / 97.8% top-5 on the complete CIFAR-10 dataset (50k train samples, 40 epochs), consistent with the dropout-regularization pattern observed in the smaller-scale comparison runs below.
 
-> *These runs use small data subsets for demo speed. Full CIFAR-10 (50k samples, 50 epochs) with this architecture class reaches 80–85%.*
+
+## Architecture Search (Optuna NAS)
+
+NeuroForge includes Bayesian-optimization-driven architecture search via
+[Optuna](https://optuna.org/) — not random sampling. Each trial's result
+informs the next via Optuna's TPE (Tree-structured Parzen Estimator) sampler,
+jointly searching over:
+
+- Number of conv layers (depth)
+- Channel widths per layer
+- Kernel sizes
+- Dense layer sizes and dropout rates
+- Learning rate (log scale)
+- Optimizer (Adam vs SGD)
+
+This is a joint architecture + hyperparameter search — `RandomArchitectureGenerator`
+only samples architectures blind, with no hyperparameter search at all.
+
+### How it works
+
+Each trial constructs a candidate architecture using `trial.suggest_*()` calls
+at every decision point. The trial trains briefly (2-3 epochs on a small
+data subset), reports validation accuracy back to Optuna, and Optuna's sampler
+uses that result to bias the next trial toward more promising regions of the
+search space.
+
+Invalid architectures (degenerate spatial dimensions after aggressive pooling)
+raise `optuna.TrialPruned()` rather than scoring 0% — a 0% score would
+incorrectly teach the sampler "this region is bad," when the real signal
+is a construction failure.
+
+### Results
+
+A 15-trial search over CIFAR-10 (1,000 train samples, 2 epochs per trial):
+
+| Best Trial | Top-1 Accuracy | Parameters | Optimizer |
+|---|---|---|---|
+| Trial #11 | 37.0% | 8,598,154 | Adam |
+
+The Pareto front below shows all 15 trials — green points are
+Pareto-optimal (best accuracy for their parameter budget), grey points
+are dominated. Trial #3 at 30K parameters shows that compact architectures
+underperform, while trial #11 found the accuracy-parameter tradeoff frontier.
+
+
+> Search runs asynchronously — `POST /architecture-search/run` returns a
+> `search_id` immediately, and the dashboard polls for live trial-by-trial
+> updates. The Pareto front builds in real time as trials complete.
+
+### Why this matters architecturally
+
+The search plugs into the same infrastructure as manual training — same
+`PyTorchTrainer`, same `PyTorchEvaluator`, same `FileExperimentTracker`.
+Adding Optuna search required **zero changes to existing domain or
+application code** — a new builder class in `infrastructure/generators/`
+and a new API router. This is the hexagonal architecture's value demonstrated
+in practice: new capabilities are adapters, not modifications.
 
 ---
 
@@ -284,6 +342,8 @@ Test coverage by layer:
 | ![Run](docs/screenshots/compare.png) | ![Results](docs/screenshots/default_result.png) |
 
 | ![Results](docs/screenshots/convo_results_1.png) | ![Results](docs/screenshots/convo_results_2.png) |
+
+| ![Run](docs/screenshots/working.png) | ![Results](docs/screenshots/search_results.png) |
 
 
 ---

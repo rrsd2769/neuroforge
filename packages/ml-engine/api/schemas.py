@@ -6,7 +6,7 @@ evolve independently of the domain model.
 """
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal, Union
+from typing import Annotated, Any, Literal, Union, Optional
 
 from pydantic import BaseModel, Field
 
@@ -130,3 +130,34 @@ class CompareResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     version: str
+
+class ArchitectureSearchRequest(BaseModel):
+    n_trials: int = 15
+    epochs_per_trial: int = 2
+    train_samples_per_trial: int = 1000
+    test_samples_per_trial: int = 300
+    min_depth: int = 2
+    max_depth: int = 6
+    channel_choices: list[int] = [16, 32, 64, 128]
+
+
+class TrialResultSchema(BaseModel):
+    trial_number: int
+    top1_accuracy: float
+    top5_accuracy: float
+    parameter_count: int
+    learning_rate: float
+    optimizer: str
+    num_layers: int
+    architecture_id: str
+
+
+class SearchStatusResponse(BaseModel):
+    search_id: str
+    status: str
+    created_at: str
+    n_trials: int
+    completed_trials: int
+    trials: list[dict]
+    best_trial: Optional[dict] = None
+    error: Optional[str] = None
